@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Collect a Dell Technical Support Report (TSR).
+
+JID=
+email_address=
+while [ $# -gt 0 ] ; do
+  case $1 in
+    *@* )
+      email_address="$1"
+      ;;
+    JID_* )
+      JID="$1"
+      ;;
+    * )
+      echo "Usage: $0 <email address> <job ID>"
+      exit 1
+  esac
+  shift
+done
+
+# If a job ID has been given, don't start a new job but check the job status.
+if [ -z "$JID" ] ; then
+  echo "This script creates a Technical Support Report."
+  echo
+  echo "Restarting dcismeng to get the best results."
+  systemctl restart dcismeng.service
+  echo "Restarting OpenManage ServerAdmin to get the best results."
+  srvadmin-services.sh restart
+
+  echo "⚙️ Running: racadm techsupreport collect -t SysInfo,OSAppNoPII,TTYLog"
+
+  OUTPUT=$(racadm techsupreport collect -t SysInfo,OSAppNoPII,TTYLog)
+  echo "$OUTPUT"
+  JID=$(echo "$OUTPUT" | egrep -o 'JID_[0-9]+')
+  if [ -z "$JID" ] ; then
+    echo "Could not get JID."
+    exit 1
+  fi
+fi
+
+echo
+echo "Waiting for job to complete (racadm jobqueue view -i $JID) ..."
+sleep 1s
+
+status=$(racadm jobqueue view -i $JID 2>&1)
+while ! grep --silent 'Status=Completed' <<< "$status" ; do
+  percent=$(grep 'Percent Complete=.*' <<< "$status")
+  # If we got a percentage, show it on the same line.
+  if [ -n "$percent" ] ; then
+    # If we got a new percentage, overwrite the old one.
+    # (`tput el` clears until end of line)
+    echo -n -e "\r" $(tput el) "$percent"
+  fi
+  sleep 10s
+  status=$(racadm jobqueue view -i $JID 2>&1)
+done
+
+echo
+grep 'Status=Completed' <<< "$status"
+echo "If it says "Completed with errors", the report is OK but the system has an issue."
+echo
+echo "Saving report..."
+report_name="$HOSTNAME-$(dmidecode -s system-serial-number).zip"
+echo "⚙️ Running: racadm techsupreport export -f $report_name"
+racadm techsupreport export -f $report_name
+
+echo "Tech Support Report saved as '$report_name'."
+
+if [ -n "$email_address" ] ; then
+  echo "Sending report to $email_address ..."
+  echo | mutt "$email_address" -s "$report_name" -a "$report_name"
+fi
+
+echo "Done."
