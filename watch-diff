@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# This script executes a command repeatedly and
+# prints only the changes in the command's output.
+# So it's a combination of 'watch' and 'diff'.
+
+# Has user specified an interval?
+if [ "$1" = '-n' ] ; then
+  interval="$2"
+  shift ; shift
+else
+  interval=1
+fi
+
+# File to save the last command output to.
+filename=$(mktemp)
+# Clean up this file on exit.
+trap "{ rm -f $filename ; }" EXIT
+
+while true ; do
+  # Execute command and collect its output
+  output=$("$@")
+
+  # Get difference between this run and a possible previous run.
+  difference=$(
+    diff --new-file "$filename" <(echo "$output") \
+    | sed -e 's/^</-/' \
+          -e 's/^>/+/' \
+    | grep -E '^(\+|\-) '
+  )
+
+  # Add a timestamp to this change and a blank line.
+  if [ -n "$difference" ] ; then
+    echo "--- $(date) ---"
+    echo "$difference"
+    echo
+  fi
+
+  # Safe latest output
+  echo "$output" > "$filename"
+
+  # Wait before running command again
+  sleep $interval
+done
