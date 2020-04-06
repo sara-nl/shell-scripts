@@ -36,7 +36,7 @@ while true ; do
     echo
   fi
 
-  # Safe latest output
+  # Save latest output
   echo "$output" > "$filename"
 
   # Wait before running command again
