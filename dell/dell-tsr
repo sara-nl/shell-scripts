@@ -13,11 +13,16 @@ while [ $# -gt 0 ] ; do
       JID="$1"
       ;;
     * )
-      echo "Usage: $0 <email address> <job ID>"
+      echo "Usage: $0 <email address> [job ID]"
       exit 1
   esac
   shift
 done
+
+if [ -z "$email_address" ] ; then
+  echo "Please provide your email address as argument."
+  exit 1
+fi
 
 # If a job ID has been given, don't start a new job but check the job status.
 if [ -z "$JID" ] ; then
